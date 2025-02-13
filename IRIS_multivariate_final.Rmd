@@ -1,6 +1,5 @@
 ---
 title: "Analyse des données Iris - Analyses Univariées et Multivariées"
-author: "Céline Bugli et Bernadette Govaerts"
 date: '`r format(Sys.time(), "%B %d, %Y,%H:%M")`'
 output:
   html_document: # options pour sortie HTML
