@@ -1,0 +1,319 @@
+---
+title: "Analyse des données Iris - Analyses Univariées et Multivariées"
+author: "Céline Bugli et Bernadette Govaerts"
+date: '`r format(Sys.time(), "%B %d, %Y,%H:%M")`'
+output:
+  html_document: # options pour sortie HTML
+    code_folding: hide #  Cache le code  
+    collapsed: yes # Crée un document unique 
+    fig_caption: yes # Figures encapsulées ? 
+    fig_height: 5 # Hauteur par défaut des figures
+    fig_width: 6 # Largeur par défaut des figure
+    highlight: tango # style de mise en valeur du code
+    number_sections: yes # Ajout table des matières 
+    theme: united  # Style du document
+    toc: yes # Table des matiere ?
+    toc_depth: 3  # Profondeur table des matière
+    toc_float: yes # table des matière flottante
+  pdf_document: # options pour sorties pdf
+    toc: yes
+    toc_depth: '3'
+  word_document: default
+editor_options: 
+  chunk_output_type: console
+---
+```{r setup, include=FALSE}
+# Installation des librairies si ce n'est pas encore fait
+knitr::opts_chunk$set(echo = TRUE)
+require(devtools)
+# install_github("ManonMartin/MBXUCL", force = TRUE,dependencies=T)
+# install_github("kassambara/factoextra")
+# install.packages("cluster")
+#
+# Chargement des librairies
+require(MBXUCL) # Librairie MBX de l'ISBA-SMCS
+require(knitr) 
+require(pander) # Librairie pour afficher des tableaux
+require(factoextra) # librairie pour faire des beaux graphiques en stat multivariée
+require(cluster) # librairie de clustering
+require(FactoMineR) # librairie Factominer développé par URennes
+require(pastecs) # librairie qui inclut la fonction de stat descriptive stat.desc
+```
+
+Sur cette page, nous allons analyser les données Iris dont la description est disponible sur [Wikipédia](https://fr.wikipedia.org/wiki/Iris_(jeu_de_données))
+
+Le jeu de données contient 150 observations pour 3 espèces d'Iris: 
+1. Iris Setosa
+2. Iris Verticolor
+3. Iris Virginica
+
+Ces données sont utilisées pour illustrer les données 
+
+# Importation et préparation des données
+
+Le code R suivant permet d'importer les données iris-point-decimal.csv puis vérifier qu'elles ont bien été lues
+
+```{r, readData}
+# Choix du chemin vers votre répertoire où vous avez mis vos données
+pathdata="/Users/bgovaerts/Dropbox/PartageDiversProfessionel/Partage_OMICS_COURSE/code_R/AnalyseDataIris/"
+# Lecture du data frame
+iris<-read.csv(file.path(pathdata,"iris-point-decimal.csv"),sep=';',header=T)
+# Impression des 10 premières données
+kable(iris[1:10,])
+# Création de la matrice irismat avec uniquement les 4 variables
+irismat=as.matrix(iris[,2:5])
+dimnames(irismat)[[1]]=iris$Name
+# Création d'un vecteur avec les classes d'iris
+Classes=iris$Species
+# Calcul des matrices irismat centrées et standardisées
+irismatC=scale(irismat,scale=F)
+irismatS=scale(irismat)
+```
+
+# Statistiques descriptives
+
+## Vérification du nombre de données par espèce 
+
+```{r}
+pander(table(iris$Species))
+```
+## Tableau résumé des 4 variables
+```{r }
+pander(apply(irismat,2,pastecs::stat.desc))
+```
+
+## Matrice de variance covariance des données
+
+```{r}
+pander(var(irismat))
+```
+
+## Matrice de corrélation des données
+
+```{r}
+pander(cor(irismat))
+```
+
+## Matrice de variance covariance des données standardisées
+
+```{r}
+pander(var(irismatS))
+```
+
+# Graphiques des données
+
+## Scatterplot matrix
+
+Tout d'abord de simples scatterplot de chaque variable avec des couleurs différentes par espèce.
+
+```{r plot}
+plot(iris[,2:5], col=iris$Species)
+legend(6,4.5,unique(iris$Species),col=c(1:3))
+```
+
+## Boxplot
+
+Ensuite, des boxplots afin de comparer les variables d'une expèce à l'autre
+```{r boxplot}
+varnames=c("Sepal Length","Sepal Width","Petal Length","Petal Width")
+par(mfrow=c(2,2))
+for (i in c(2:5)){
+  boxplot(iris[,i]~iris$Species,ylab=varnames[i-1],xlab="Species")
+}
+
+
+```
+
+## Scatterplot plus complexe
+
+Enfin, un graphique plus complexe.  Attention, dans ce graphique on mélange les dimensions des pétales et sépales ce qui n'a pas nécessairement de sens !
+
+```{r complex_plot}
+iS <- iris$Species == "setosa"
+iV <- iris$Species == "versicolor"
+iVi <- iris$Species == "virginica"
+matplot(c(0, 8), c(0, 5), type = "n", xlab = "Length", ylab = "Width",
+        main = "Petal and Sepal Dimensions in Iris Blossoms")
+matpoints(iris[iS,c(2,4)], iris[iS,c(3,5)], pch = c(16,17), col = c(2,2))
+matpoints(iris[iV,c(2,4)], iris[iV,c(3,5)], pch = c(16,17), col = c(3,3))
+matpoints(iris[iVi,c(2,4)], iris[iVi,c(3,5)], pch = c(16,17), col = c(4,4))
+legend(0,5, c("Setosa Petals", "Setosa Sepals",
+               "Versicolor Petals", "Versicolor Sepals",
+               "Virginica Petals", "Virginica Sepals"),
+       pch = rep(16:17,3), col = rep(c(2,3,4), c(2,2,2)))
+
+
+```
+
+# Analyse de la normalité 
+
+Nous allons vérifier la normalité des données par espèce pour chacune des 4 variables.
+
+##  QQ-plot par espèce et par variable
+
+```{r qqplot, fig.height=4}
+par(mfrow=c(1,3))
+p.val=matrix(ncol=3,nrow=4)
+dimnames(p.val)[[2]]=c("Setosa","Versicolor","Virginica")
+dimnames(p.val)[[1]]=dimnames(iris[2:5])[[2]]
+
+for (i in c(2:5)){
+cat("QQplot de la variable ",dimnames(iris[2:5])[[2]][i]," par type d'iris")
+    qqnorm(iris[iS,i],pch=1,main="Setosa")
+    qqline(iris[iS,i],col=2)
+    p.val[i-1,1]=shapiro.test(iris[iS,i])$p.value
+    qqnorm(iris[iV,i],pch=1,main="Versicolor")
+    qqline(iris[iV,i],col=2)
+    p.val[i-1,2]=shapiro.test(iris[iV,i])$p.value
+    qqnorm(iris[iVi,i],pch=1,main="Virginica")
+    qqline(iris[iVi,i],col=2)
+    p.val[i-1,3]=shapiro.test(iris[iVi,i])$p.value
+  }
+  
+par(mfrow=c(1,1))
+```
+## Tests de normalité
+
+P-valeurs des tests de Shaprio-Wilk par type d'iris:
+```{r normality_test}
+pander(p.val)
+```
+
+# ANOVA et tests de comparaisons 2 à 2
+Nous allons nous limiter à l'analyse de la variable Sepal.Length.
+```{r anova}
+pander(aov(iris$Sepal.Length~iris$Species))
+pairwise.t.test(iris$Sepal.Length,iris$Species, p.adj = "bonf")
+```
+
+
+
+# PCA avec les routines de base de R 
+
+PCA des données Iris sur les données standardisées et impression des résultats par défaut.
+```{r}
+ncomp=4
+PCA.res = prcomp(irismat, center = T, scale = T)
+```
+
+## Resultats numériques par défaut de prcomp
+
+On reçoit les vecteurs propres (loadings dans le langage de la chimiométrie) et les pourcentage de variance expliquée par les composantes
+
+```{r}
+pander(summary(PCA.res))
+```
+
+## Scree plot
+```{r}
+plot(PCA.res,type="l",main="Scree plot")
+```
+
+Screeplot de la librairie factoextra
+
+```{r,eval=F}
+fviz_screeplot(PCA.res, ncp=ncomp, choice="eigenvalue")
+```
+
+## Correlation plot 
+Avec la librairie factoextra
+```{r,eval=F}
+fviz_pca_var(PCA.res)
+```
+
+## Score plot
+
+Score plot avec la librairie factoextra
+```{r,warning=F,eval=F}
+fviz_pca_ind(PCA.res,cex=0.2,addEllipses=T, habillage=Classes)
+```
+
+## Biplot
+
+```{r}
+biplot(PCA.res,cex=0.5)
+```
+
+et avec la librairie magique factoextra :-)
+
+```{r,eval=F}
+fviz_pca_biplot(PCA.res,habillage=Classes)
+```
+
+
+
+# PCA avec la librairie MBX
+
+PCA des données Iris avec la librairie UCL MBX sur les données standardisées.  Cette librairie sur utilisée régulièrement dans le cours mais vous n'êtes bien-sûr pas obligés de l'utiliser.  
+
+```{r PCA}
+ncomp=4
+PCA.res = SVDforPCA(irismatS,ncomp = ncomp)
+```
+
+## Valeurs propres
+
+% de la variance expliquée par chaque variable
+
+```{r eigPCA}
+eig.res=rbind(PCA.res$var,PCA.res$var*100/sum(PCA.res$var),PCA.res$cumvar)
+rownames(eig.res)=c("Variances","Prop Var","Cum Eigen Values")
+pander(eig.res)
+```
+
+## Scores
+
+Représentation graphique des scores pour les 4 premières composantes
+
+```{r, echo=TRUE, fig.height=5, fig.show='hold', fig.width=5, warning=FALSE, out.width='50%'}
+DrawScores(PCA.res, type.obj = "PCA", drawNames=TRUE,createWindow=FALSE, main = paste("PCA score plot for Iris data "),color = as.character(Classes), pch = as.character(Classes),axes = c(1, 2),size=2,drawEllipses=TRUE)
+DrawScores(PCA.res, type.obj = "PCA", drawNames=TRUE,createWindow=FALSE, main = paste("PCA score plot for Iris data "),color = as.character(Classes), pch = as.character(Classes),axes = c(3, 4),size=2,drawEllipses=TRUE)
+```
+## Table des loadings
+
+```{r Loadings}
+pander(PCA.res$loadings[,1:ncomp],digits=4)
+```
+## Graphe des loadings 
+
+On représente les loadings en ligne car c'est plus lisible quand il y a beaucoup de variables.
+
+```{r, echo=TRUE, fig.height=4, fig.show='hold',out.width='100%'}
+DrawLoadings(PCA.res, type.obj = c("PCA"),
+  createWindow = FALSE, main = "Loadings données Iris", axes = c(1, 4),
+  loadingstype = c("s"), num.stacked = 4,  ang = c("90"), nxaxis=4,xaxis_type = c("character"))
+```
+
+# PCA avec la librairie FactoMinerR
+
+PCA des données Iris sur les données standardisées et impression des résultats par défaut.  Cette librairie n'est pas utile dans le cours mais on vous en parle car elle a été vue au cours d'analyse des données.  
+
+```{r}
+res.pca = PCA(irismat, scale.unit=TRUE, ncp=5)
+plot.PCA(res.pca, axes=c(1, 2), choix="ind", col.ind=Classes,cex=0.5)
+plot.PCA(res.pca, axes=c(1, 2), choix="var")
+```
+
+# Clustering hiérarchique 
+
+## Clustering avec la librairie cluster
+```{r, fig.height=4}
+# Calcul de la matrice de dissimilarité sur les données standardisées
+d <- dist(irismatS, method = "euclidean")
+# Clustering hiérarchique avec l'algorithme de regroupement de Ward
+res.hc <- hclust(d, method = "ward.D2" )
+# Coupe de l'arbre en 3 groupes
+grp <- cutree(res.hc, k = 3)
+# Visualisation du dendogramme
+plot(res.hc, cex = 0.3) # dendogramme
+rect.hclust(res.hc, k = 3, border = 2:4) # ajout de rectangles
+```
+
+## Clustering avec la librairie factoextra 
+```{r, fig.height=4}
+res=hcut(irismat, k = 3, stand = TRUE)
+fviz_dend(res, rect = TRUE, cex = 0.3,
+          k_colors = c("#2E9FDF", "#E7B800", "#FC4E07"))
+```
+
+# FIN :-)
